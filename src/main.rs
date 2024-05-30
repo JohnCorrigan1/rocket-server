@@ -1,21 +1,40 @@
 #[macro_use]
 extern crate rocket;
-
+use rocket::{
+    serde::{json::Json, Serialize},
+    tokio::time::sleep,
+};
+use std::str::FromStr;
+use std::time::Duration;
 //use rocket::data::{Data, ToByteUnit};
 //use rocket::http::{ContentType, Status};
 //use std::fs::File;
 //use std::io::Write;
 //use sys_info;
-use sysinfo::{Cpu, CpuRefreshKind, DiskUsage, Disks, MemoryRefreshKind, System};
+//use rocket_contrib::json::Json;
+//use rocket_contrib::json::Json;
 
-#[get("/cpu")]
-async fn cpu() -> String {
-    let system = System::new_with_specifics(
+use rocket::http::Method;
+use rocket_cors::{AllowedHeaders, AllowedOrigins, Cors, CorsOptions};
+
+use sysinfo::{CpuRefreshKind, Disks, MemoryRefreshKind, System};
+
+#[derive(Serialize)]
+struct CpuInfo {
+    cpu_usage: f32,
+}
+
+#[get("/cpu", format = "json")]
+async fn cpu() -> Json<CpuInfo> {
+    let mut system = System::new_with_specifics(
         sysinfo::RefreshKind::new().with_cpu(CpuRefreshKind::everything()),
     );
-    let cpu = system.global_cpu_info().cpu_usage();
-
-    format!("{{cpuUsage: {:.2}}}", &cpu)
+    system.refresh_cpu_usage();
+    let _ = sleep(Duration::from_millis(200)).await;
+    system.refresh_cpu_usage();
+    Json(CpuInfo {
+        cpu_usage: system.global_cpu_info().cpu_usage(),
+    })
 }
 
 #[get("/memory")]
@@ -64,7 +83,11 @@ async fn storage() -> String {
 
 #[launch]
 fn rocket() -> _ {
-    rocket::build().mount("/api", routes![cpu, memory, storage])
+    let cors = rocket_cors::CorsOptions::default().to_cors().unwrap();
+
+    rocket::build()
+        .attach(cors)
+        .mount("/api", routes![cpu, memory, storage])
 }
 
 //#[post("/upload", data = "<data>")]
