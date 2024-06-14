@@ -70,21 +70,25 @@ async fn storage() -> Json<Vec<Storage>> {
     let disk_usage = disks
         .iter()
         .filter(|disk| {
-            disk.file_system().to_str().unwrap() == "ext4"
-                && !disk.mount_point().to_str().unwrap().starts_with("/var")
+            disk.file_system().to_str().unwrap_or("ext3") == "ext4"
+                && !disk
+                    .mount_point()
+                    .to_str()
+                    .unwrap_or("/var")
+                    .starts_with("/var")
         })
         .map(|disk| {
             let available = disk.available_space() as f64 / 1024.0 / 1024.0 / 1024.0; // in GB
             let total = disk.total_space() as f64 / 1024.0 / 1024.0 / 1024.0; // in GB
 
             Storage {
-                name: disk.name().to_str().unwrap().to_string(),
+                name: disk.name().to_str().unwrap_or("N/A").to_string(),
                 disk_type: disk.kind().to_string(),
                 total,
                 available,
                 usage: (total - available) / total * 100.0,
-                mount_point: disk.mount_point().to_str().unwrap().to_string(),
-                file_system: disk.file_system().to_str().unwrap().to_string(),
+                mount_point: disk.mount_point().to_str().unwrap_or("N/A").to_string(),
+                file_system: disk.file_system().to_str().unwrap_or("N/A").to_string(),
             }
         })
         .collect();
@@ -104,17 +108,24 @@ async fn upload(mut form: Form<ImageUpload<'_>>) -> Result<String, std::io::Erro
     };
 
     let content_type = match form.image.content_type() {
-        Some(content_type) => content_type.media_type().extension().unwrap().as_str(),
-        None => ".mkv",
+        Some(content_type) => content_type
+            .media_type()
+            .extension()
+            .unwrap_or("mkv".into())
+            .to_string(),
+        None => "mkv".to_string(),
     };
 
-    let path = Path::new("/mnt/sdb1").join(format!("{}.{}", &filename, content_type));
+    let path = Path::new("/mnt/sdb1").join(format!("{}.{}", &filename, &content_type));
     form.image.persist_to(&path).await?;
 
     let mut perms = fs::metadata(&path)?.permissions();
     perms.set_mode(0o744); //rwxr--r-- read write execute for owner, read for others
     fs::set_permissions(&path, perms)?;
-    Ok(format!("{} uploaded successfully", filename))
+    Ok(format!(
+        "{} uploaded successfully. With content type: {}",
+        filename, content_type
+    ))
 }
 
 #[launch]
